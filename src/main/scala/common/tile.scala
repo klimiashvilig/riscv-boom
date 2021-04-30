@@ -48,6 +48,7 @@ case class BoomTileParams(
   core: BoomCoreParams = BoomCoreParams(),
   icache: Option[ICacheParams] = Some(ICacheParams()),
   dcache: Option[DCacheParams] = Some(DCacheParams()),
+  victimCache: Option[VictimCacheParams] = Some(VictimCacheParams()),
   btb: Option[BTBParams] = Some(BTBParams()),
   trace: Boolean = false,
   name: Option[String] = Some("boom_tile"),
@@ -179,7 +180,6 @@ class BoomTileModuleImp(outer: BoomTile) extends BaseTileModuleImp(outer){
 
   //fpuOpt foreach { fpu => core.io.fpu <> fpu.io } RocketFpu - not needed in boom
   core.io.rocc := DontCare
-
   if (outer.roccs.size > 0) {
     val (respArb, cmdRouter) = {
       val respArb = Module(new RRArbiter(new RoCCResponse()(outer.p), outer.roccs.size))
