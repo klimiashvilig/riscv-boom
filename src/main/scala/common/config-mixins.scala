@@ -204,7 +204,7 @@ class WithNSmall8kB2WBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) ext
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
             ),
             dcache = Some(
-              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=2, nMSHRs=2, nTLBWays=8, useVictimCache=false)
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=2, nMSHRs=2, nTLBWays=8)
             ),
             icache = Some(
               ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=2, fetchBytes=2*4)
@@ -254,7 +254,7 @@ class WithNSmall4kB2WBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) ext
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
             ),
             dcache = Some(
-              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=2, nMSHRs=2, nTLBWays=8, useVictimCache=false)
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=2, nMSHRs=2, nTLBWays=8)
             ),
             icache = Some(
               ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=2, fetchBytes=2*4)
@@ -304,7 +304,7 @@ class WithNSmall1kB2WBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) ext
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
             ),
             dcache = Some(
-              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=8, nWays=2, nMSHRs=2, nTLBWays=8, useVictimCache=false)
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=8, nWays=2, nMSHRs=2, nTLBWays=8)
             ),
             icache = Some(
               ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=8, nWays=2, fetchBytes=2*4)
@@ -354,7 +354,7 @@ class WithNSmall1kB2Wi8kB4WdBooms(n: Int = 1, victimWays: Int = 16, overrideIdOf
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
             ),
             dcache = Some(
-              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8, useVictimCache=false)
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8)
             ),
             icache = Some(
               ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=8, nWays=2, fetchBytes=2*4, victimWays=victimWays, useVictimCache=(victimWays != 0))
@@ -404,7 +404,7 @@ class WithNSmall2kB2Wi8kB4WdBooms(n: Int = 1, victimWays: Int = 16, overrideIdOf
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
             ),
             dcache = Some(
-              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8, useVictimCache=false)
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8)
             ),
             icache = Some(
               ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=16, nWays=2, fetchBytes=2*4, victimWays=victimWays, useVictimCache=(victimWays != 0))
@@ -454,7 +454,7 @@ class WithNMedium1kB2Wi8kB4WdBooms(n: Int = 1, victimWays: Int = 16, overrideIdO
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
             ),
             dcache = Some(
-              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8, useVictimCache=false)
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8)
             ),
             icache = Some(
               ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=8, nWays=2, fetchBytes=2*4, victimWays=victimWays, useVictimCache=(victimWays != 0))
@@ -501,7 +501,7 @@ class WithNMedium2kB2Wi8kB4WdBooms(n: Int = 1, victimWays: Int = 16, overrideIdO
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
             ),
             dcache = Some(
-              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8, useVictimCache=false)
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=32, nWays=4, nMSHRs=2, nTLBWays=8)
             ),
             icache = Some(
               ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=16, nWays=2, fetchBytes=2*4, victimWays=victimWays, useVictimCache=(victimWays != 0))
