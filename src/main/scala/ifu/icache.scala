@@ -253,9 +253,6 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
 
     val early_repl_way = if (isDM) 0.U else LFSR(16, s0_valid)(log2Ceil(nWays)-1,0)
     val repl_way = RegInit(0.U)
-    when (refill_fire) {
-      repl_way := early_repl_way
-    }
     // val repl_way = if (isDM) 0.U else LFSR(16, refill_fire)(log2Ceil(nWays)-1,0)
 
     val tag_array = SyncReadMem(nSets, Vec(nWays, UInt(tagBits.W)))
@@ -286,6 +283,9 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
     val victim_refill_valid = RegInit(false.B)
     when (victim_refill_fire) { victim_refill_valid := true.B }
     val victim_refill_done = victimCache.io.resp.valid
+    when (victim_refill_fire) {
+      repl_way := early_repl_way
+    }
 
     val victim_updated = Reg(Bool())
     io.req.ready := !(refill_one_beat && !victim_updated) && !victim_refill_done
