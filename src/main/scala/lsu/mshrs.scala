@@ -91,6 +91,9 @@ class BoomMSHR(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()(p)
     val wb_resp     = Input(Bool())
 
     val probe_rdy   = Output(Bool())
+
+    val victim_req  = Decoupled(new VictimCacheReq(32))
+    val victim_resp = Flipped(Decoupled(new VictimCacheResp(64)))
   })
 
   // TODO: Optimize this. We don't want to mess with cache during speculation
@@ -103,7 +106,7 @@ class BoomMSHR(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()(p)
   // s_meta_write_req  : Write the metadata for new cache lne
   // s_meta_write_resp :
 
-  val s_invalid :: s_refill_req :: s_refill_resp :: s_drain_rpq_loads :: s_meta_read :: s_meta_resp_1 :: s_meta_resp_2 :: s_meta_clear :: s_wb_meta_read :: s_wb_req :: s_wb_resp :: s_commit_line :: s_drain_rpq :: s_meta_write_req :: s_mem_finish_1 :: s_mem_finish_2 :: s_prefetched :: s_prefetch :: Nil = Enum(18)
+  val s_invalid :: s_refill_req :: s_victim_only_req :: s_victim_refill_resp :: s_refill_resp :: s_wait_to_send_ack :: s_drain_rpq_loads :: s_meta_read :: s_meta_resp_1 :: s_meta_resp_2 :: s_meta_clear :: s_wb_meta_read :: s_wb_req :: s_wb_resp :: s_commit_line :: s_drain_rpq :: s_meta_write_req :: s_mem_finish_1 :: s_mem_finish_2 :: s_prefetched :: s_prefetch :: Nil = Enum(21)
   val state = RegInit(s_invalid)
 
   val req     = Reg(new BoomDCacheReqInternal)
@@ -169,6 +172,12 @@ class BoomMSHR(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()(p)
   io.lb_write.valid      := false.B
   io.lb_read.valid       := false.B
 
+  io.victim_resp.ready   := true.B
+  io.victim_req.valid    := false.B
+  io.victim_req.bits     := DontCare
+
+  val discard_victim_resp = RegInit(false.B)
+
   when (io.req_sec_val && io.req_sec_rdy) {
     req.uop.mem_cmd := dirtier_cmd
     when (is_hit_again) {
@@ -216,11 +225,69 @@ class BoomMSHR(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()(p)
       toAddress       = Cat(req_tag, req_idx) << blockOffBits,
       lgSize          = lgCacheBlockBytes.U,
       growPermissions = grow_param)._2
+    io.victim_req.valid := true.B
+    io.victim_req.bits.addr := Cat(req_tag, req_idx) << blockOffBits
+    io.victim_req.bits.source := io.id
     when (io.mem_acquire.fire()) {
+      state := s_refill_resp
+    } .elsewhen(io.victim_req.fire()) {
+      state := s_victim_only_req
+    }
+  } .elsewhen (state === s_victim_only_req) {
+    io.victim_resp.ready    := io.lb_write.ready
+    io.lb_write.valid       := io.victim_resp.valid
+    io.lb_write.bits.id     := io.id
+    io.lb_write.bits.offset := io.victim_resp.bits.addr
+    io.lb_write.bits.data   := io.victim_resp.bits.data
+
+    when (io.victim_resp.bits.refill_done && io.victim_resp.valid && io.mem_grant.valid) {
+      state := s_drain_rpq_loads
+      commit_line := false.B
+      new_coh := coh_on_grant
+
+      // grantack.valid := true.B
+      // grantack.bits := edge.GrantAck(io.mem_grant.bits)
+      // MYTODO: If mem_grant doesn't arrive on-time, we will use wrong mem_grant.bits.sink
+    }
+
+    io.mem_acquire.valid := !io.victim_resp.valid
+    // TODO: Use AcquirePerm if just doing permissions acquire
+    io.mem_acquire.bits  := edge.AcquireBlock(
+      fromSource      = io.id,
+      toAddress       = Cat(req_tag, req_idx) << blockOffBits,
+      lgSize          = lgCacheBlockBytes.U,
+      growPermissions = grow_param)._2
+    when (io.mem_acquire.fire() && !io.victim_resp.valid) {
       state := s_refill_resp
     }
   } .elsewhen (state === s_refill_resp) {
-    when (edge.hasData(io.mem_grant.bits)) {
+    io.victim_resp.ready    := io.lb_write.ready
+    io.lb_write.valid       := io.victim_resp.valid
+    io.lb_write.bits.id     := io.id
+    io.lb_write.bits.offset := io.victim_resp.bits.addr
+    io.lb_write.bits.data   := io.victim_resp.bits.data
+
+    when (!io.lb_write.ready) {
+      io.victim_resp.ready    := true.B // Drain the victim response
+      discard_victim_resp     := true.B
+    }
+
+    when (io.victim_resp.bits.refill_done && io.victim_resp.valid && !discard_victim_resp) {
+      when (io.mem_grant.valid) {
+        state := s_drain_rpq_loads
+        commit_line := false.B
+        new_coh := coh_on_grant
+
+        grantack.valid := true.B
+        grantack.bits := edge.GrantAck(io.mem_grant.bits)
+      } .otherwise {
+        state := s_wait_to_send_ack
+      }
+      // MYTODO: If mem_grant doesn't arrive on-time, we will use wrong mem_grant.bits.sink
+    }
+
+    when (edge.hasData(io.mem_grant.bits) && (!io.victim_resp.valid || discard_victim_resp)) {  // If the response type is grant data
+    // when (edge.hasData(io.mem_grant.bits)) {  // If the response type is grant data
       io.mem_grant.ready      := io.lb_write.ready
       io.lb_write.valid       := io.mem_grant.valid
       io.lb_write.bits.id     := io.id
@@ -242,7 +309,19 @@ class BoomMSHR(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()(p)
       new_coh := coh_on_grant
 
     }
+  } .elsewhen (state === s_wait_to_send_ack) {
+    discard_victim_resp     := false.B
+    when (io.mem_grant.valid) {
+      state := s_drain_rpq_loads
+      commit_line := false.B
+      new_coh := coh_on_grant
+
+      grantack.valid := true.B
+      grantack.bits := edge.GrantAck(io.mem_grant.bits)
+      // MYTODO: If mem_grant doesn't arrive on-time, we will use wrong mem_grant.bits.sink
+    }
   } .elsewhen (state === s_drain_rpq_loads) {
+    discard_victim_resp     := false.B
     val drain_load = (isRead(rpq.io.deq.bits.uop.mem_cmd) &&
                      !isWrite(rpq.io.deq.bits.uop.mem_cmd) &&
                      (rpq.io.deq.bits.uop.mem_cmd =/= M_XLR)) // LR should go through replay
@@ -533,6 +612,9 @@ class BoomMSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()
 
     val fence_rdy = Output(Bool())
     val probe_rdy = Output(Bool())
+
+    val victim_req  = Decoupled(new VictimCacheReq(32))
+    val victim_resp = Flipped(Decoupled(new VictimCacheResp(64)))
   })
 
   val req_idx = OHToUInt(io.req.map(_.valid))
@@ -616,9 +698,15 @@ class BoomMSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()
   val mshr_alloc_idx = Wire(UInt())
   val pri_rdy = WireInit(false.B)
   val pri_val = req.valid && sdq_rdy && cacheable && !idx_match(req_idx)
+
+  val victim_req_arb = Module(new Arbiter(new VictimCacheReq(32), cfg.nMSHRs))
+  io.victim_req <> victim_req_arb.io.out
+
   val mshrs = (0 until cfg.nMSHRs) map { i =>
     val mshr = Module(new BoomMSHR)
     mshr.io.id := i.U(log2Ceil(cfg.nMSHRs).W)
+
+    victim_req_arb.io.in(i) <> mshr.io.victim_req
 
     for (w <- 0 until memWidth) {
       idx_matches(w)(i) := mshr.io.idx.valid && mshr.io.idx.bits === io.req(w).bits.addr(untagBits-1,blockOffBits)
@@ -672,6 +760,11 @@ class BoomMSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()
     mshr.io.mem_grant.bits  := DontCare
     when (io.mem_grant.bits.source === i.U) {
       mshr.io.mem_grant <> io.mem_grant
+    }
+    mshr.io.victim_resp.valid := false.B
+    mshr.io.victim_resp.bits  := DontCare
+    when (io.victim_resp.bits.source === i.U) {// && (io.mem_grant.valid && io.mem_grant.bits.source =/= i.U)) {
+      mshr.io.victim_resp <> io.victim_resp
     }
 
     sec_rdy   = sec_rdy || (mshr.io.req_sec_rdy && mshr.io.req_sec_val)

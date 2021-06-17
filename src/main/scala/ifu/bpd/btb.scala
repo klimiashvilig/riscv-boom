@@ -22,11 +22,11 @@ case class BoomBTBParams(
 
 class BTBBranchPredictorBank(params: BoomBTBParams = BoomBTBParams())(implicit p: Parameters) extends BranchPredictorBank()(p)
 {
-  override val nSets         = params.nSets
+  override val nSets         = 32 //params.nSets
   override val nWays         = params.nWays
   val tagSz         = vaddrBitsExtended - log2Ceil(nSets) - log2Ceil(fetchWidth) - 1
   val offsetSz      = params.offsetSz
-  val extendedNSets = params.extendedNSets
+  val extendedNSets = 32 //params.extendedNSets
 
   require(isPow2(nSets))
   require(isPow2(extendedNSets) || extendedNSets == 0)

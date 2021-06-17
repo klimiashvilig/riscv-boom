@@ -28,6 +28,7 @@ import freechips.rocketchip.rocket.{HasL1ICacheParameters, ICacheParams, ICacheE
 import freechips.rocketchip.diplomaticobjectmodel.logicaltree.{LogicalTreeNode}
 import freechips.rocketchip.diplomaticobjectmodel.DiplomaticObjectModelAddressing
 import freechips.rocketchip.diplomaticobjectmodel.model.{OMComponent, OMICache, OMECC}
+import chisel3.util.experimental.BoringUtils
 
 import boom.common._
 import boom.util.{BoomCoreStringPrefix}
@@ -108,11 +109,15 @@ class VictimCacheModule(outer: VictimCache) extends LazyModuleImp(outer)
 {
   val io = IO(new VictimCacheBundle(outer))
 
+  val enable_vic = Wire(Bool())
+  enable_vic := true.B
+  // BoringUtils.addSink(enable_vic, "enablevic")
+
   val victim_blockOffBits = log2Ceil(outer.victimCacheParams.blockBytes)
   val victim_tagBits = outer.victimCacheParams.paddrBits - victim_blockOffBits
   val victim_untagBits = victim_blockOffBits
 
-  require(isPow2(outer.victimCacheParams.nSets) && isPow2(outer.victimCacheParams.nWays))
+  require(isPow2(outer.victimCacheParams.nSets)) // && isPow2(outer.victimCacheParams.nWays))
 
   // How many bits do we intend to fetch at most every cycle?
   val wordBits = outer.victimCacheParams.blockBytes*8
@@ -142,8 +147,8 @@ class VictimCacheModule(outer: VictimCache) extends LazyModuleImp(outer)
   val repl = new PseudoLRU(outer.victimCacheParams.nWays)
 
 
-  io.req.ready := true.B    // MYTODO: figure out what to do with this
-  io.evicted_data.ready := true.B
+  io.req.ready := enable_vic    // MYTODO: figure out what to do with this
+  io.evicted_data.ready := enable_vic
 
   val tag_array = SyncReadMem(outer.victimCacheParams.nSets, Vec(outer.victimCacheParams.nWays, UInt(victim_tagBits.W)))
   val tag_rdata = tag_array.read(0.U, s0_valid)
@@ -206,7 +211,7 @@ class VictimCacheModule(outer: VictimCache) extends LazyModuleImp(outer)
   val s2_data = s2_way_mux
 
   io.resp.bits.data := s2_data
-  io.resp.valid := s2_valid && s2_hit
+  io.resp.valid := enable_vic && s2_valid && s2_hit
 
   override def toString: String = BoomCoreStringPrefix(
     "==VictimCache-ICache==",

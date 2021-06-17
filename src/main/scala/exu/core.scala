@@ -74,6 +74,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   // Meanwhile, the FP pipeline holds the FP issue window, FP regfile, and FP arithmetic units.
   var fp_pipeline: FpPipeline = null
+  // val useFPU = false
   if (usingFPU) fp_pipeline = Module(new FpPipeline)
 
   // ********************************************************
@@ -768,7 +769,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // Backpressure through dispatcher if necessary
   for (i <- 0 until issueParams.size) {
     if (issueParams(i).iqType == IQT_FP.litValue) {
+      //  if (usingFPU)
        fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(i)
+      //  else
+      //    dispatcher.io.dis_uops(i) <> DontCare
     } else {
        issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)
        iu_idx += 1
@@ -1183,6 +1187,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     ll_wbarb.io.in(1)        <> fp_pipeline.io.to_int
     // Connect FLDs
     fp_pipeline.io.ll_wports <> exe_units.memory_units.map(_.io.ll_fresp)
+  // } else {
+  //   exe_units.ifpu_unit.io.ll_fresp <> DontCare
   }
   if (usingRoCC) {
     require(usingFPU)
@@ -1272,6 +1278,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     mem_units(i).io.bp       := csr.io.bp
     mem_units(i).io.mcontext := csr.io.mcontext
     mem_units(i).io.scontext := csr.io.scontext
+    // if (!usingFPU)
+    //   mem_units(i).io.ll_fresp := DontCare
   }
 
   // LSU <> ROB

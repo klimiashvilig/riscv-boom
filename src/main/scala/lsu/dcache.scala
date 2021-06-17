@@ -19,6 +19,26 @@ import freechips.rocketchip.rocket._
 import boom.common._
 import boom.exu.BrUpdateInfo
 import boom.util.{IsKilledByBranch, GetNewBrMask, BranchKillableQueue, IsOlder, UpdateBrMask, AgePriorityEncoder, WrapInc, Transpose}
+import chisel3.util.experimental.BoringUtils
+
+case class DVictimCacheParams(
+    nSets: Int = 1,
+    nWays: Int = 8,
+    rowBits: Int = 128,
+    nTLBSets: Int = 1,
+    nTLBWays: Int = 32,
+    tagECC: Option[String] = None,
+    dataECC: Option[String] = None,
+    itimAddr: Option[BigInt] = None,
+    prefetch: Boolean = false,
+    blockBytes: Int = 64,
+    latency: Int = 2,
+    paddrBits: Int = 56,
+    fetchBytes: Int = 4) extends L1CacheParams {
+  def tagCode: Code = Code.fromString(tagECC)
+  def dataCode: Code = Code.fromString(dataECC)
+  def replacement = new RandomReplacement(nWays)
+}
 
 
 class BoomWritebackUnit(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCacheModule()(p) {
@@ -27,8 +47,8 @@ class BoomWritebackUnit(implicit edge: TLEdgeOut, p: Parameters) extends L1Hella
     val meta_read = Decoupled(new L1MetaReadReq)
     val resp = Output(Bool())
     val idx = Output(Valid(UInt()))
-    val data_req = Decoupled(new L1DataReadReq)
-    val data_resp = Input(UInt(encRowBits.W))
+    val data_req = Decoupled(new L1DataReadReq)     // Data request that this(wb) module sends. This goes to the dcache array to check for hit
+    val data_resp = Input(UInt(encRowBits.W))       // This is the response from dcache
     val mem_grant = Input(Bool())
     val release = Decoupled(new TLBundleC(edge.bundle))
     val lsu_release = Decoupled(new TLBundleC(edge.bundle))
@@ -398,6 +418,14 @@ class BoomNonBlockingDCache(staticIdForMetadataUseOnly: Int)(implicit p: Paramet
 
   lazy val module = new BoomNonBlockingDCacheModule(this)
 
+  val victimCacheParams = if (cfg.useVictimCache) {
+    DVictimCacheParams(rowBits = cfg.rowBits, nSets=1, nWays=4, paddrBits=32, fetchBytes=cfg.rowBits)
+  } else {
+    DVictimCacheParams(rowBits = cfg.rowBits, nSets=1, nWays=4, paddrBits=32, fetchBytes=cfg.rowBits)
+  }
+
+  val victimCache = LazyModule(new boom.lsu.VictimCache(victimCacheParams, staticIdForMetadataUseOnly))
+
   def flushOnFenceI = cfg.scratch.isEmpty && !node.edges.out(0).manager.managers.forall(m => !m.supportsAcquireT || !m.executable || m.regionType >= RegionType.TRACKED || m.regionType <= RegionType.IDEMPOTENT)
 
   require(!tileParams.core.haveCFlush || cfg.scratch.isEmpty, "CFLUSH_D_L1 instruction requires a D$")
@@ -416,6 +444,8 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   implicit val edge = outer.node.edges.out(0)
   val (tl_out, _) = outer.node.out(0)
   val io = IO(new BoomDCacheBundle)
+
+  val victimCache = outer.victimCache.module
 
   private val fifoManagers = edge.manager.managers.filter(TLFIFOFixer.allVolatile)
   fifoManagers.foreach { m =>
@@ -712,7 +742,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   val s2_word_idx   = widthMap(w => if (rowWords == 1) 0.U else s2_req(w).addr(log2Up(rowWords*wordBytes)-1, log2Up(wordBytes)))
 
   // replacement policy
-  val replacer = cacheParams.replacement
+  val replacer = new TrueLRU(nWays)      //cacheParams.replacement
   val s1_replaced_way_en = UIntToOH(replacer.way)
   val s2_replaced_way_en = UIntToOH(RegNext(replacer.way))
   val s2_repl_meta = widthMap(i => Mux1H(s2_replaced_way_en, wayMap((w: Int) => RegNext(meta(i).io.resp(w))).toSeq))
@@ -809,6 +839,21 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   wb.io.data_resp       := s2_data_muxed(0)
   mshrs.io.wb_resp      := wb.io.resp
   wb.io.mem_grant       := tl_out.d.fire() && tl_out.d.bits.source === cfg.nMSHRs.U
+
+  victimCache.io.evicted_data.valid := RegNext(RegNext(wb.io.data_req.fire()))
+  victimCache.io.evicted_data.bits.data := s2_data_muxed(0)
+  victimCache.io.evicted_data.bits.addr := RegEnable(Cat(wbArb.io.out.bits.tag, wbArb.io.out.bits.idx) << blockOffBits, wb.io.req.fire())
+
+  victimCache.io.invalidate := prober.io.req.valid
+  
+  victimCache.io.resp.ready := true.B
+
+  mshrs.io.victim_req <> victimCache.io.req
+  mshrs.io.victim_resp <> victimCache.io.resp
+
+  // when (tl_out.d.fire()) {
+  //   printf("L2 - %b\n", tl_out.d.bits.data)
+  // }
 
   val lsu_release_arb = Module(new Arbiter(new TLBundleC(edge.bundle), 2))
   io.lsu.release <> lsu_release_arb.io.out

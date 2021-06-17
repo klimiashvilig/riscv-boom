@@ -71,7 +71,7 @@ case class BoomCoreParams(
   useFetchMonitor: Boolean = true,
   bootFreqHz: BigInt = 0,
   fpu: Option[FPUParams] = Some(FPUParams(sfmaLatency=4, dfmaLatency=4)),
-  usingFPU: Boolean = true,
+  usingFPU: Boolean = false,
   haveBasicCounters: Boolean = true,
   misaWritable: Boolean = false,
   mtvecInit: Option[BigInt] = Some(BigInt(0)),
@@ -79,7 +79,7 @@ case class BoomCoreParams(
   haveCFlush: Boolean = false,
   mulDiv: Option[freechips.rocketchip.rocket.MulDivParams] = Some(MulDivParams(divEarlyOut=true)),
   nBreakpoints: Int = 0, // TODO Fix with better frontend breakpoint unit
-  nL2TLBEntries: Int = 512,
+  nL2TLBEntries: Int = 64,
   nL2TLBWays: Int = 1,
   nLocalInterrupts: Int = 0,
   useNMI: Boolean = false,

@@ -25,7 +25,7 @@ case class BoomBIMParams(
 
 class BIMBranchPredictorBank(params: BoomBIMParams = BoomBIMParams())(implicit p: Parameters) extends BranchPredictorBank()(p)
 {
-  override val nSets = params.nSets
+  override val nSets = 128 //params.nSets
 
   require(isPow2(nSets))
 
